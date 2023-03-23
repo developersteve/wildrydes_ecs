@@ -1,0 +1,24 @@
+version: '3.8'
+services: 
+    mysql:
+        build: ./mysql/
+        image: "wildrydes_mysql:latest"
+        container_name: mysql
+        restart: always
+        environment: 
+            - MYSQL_ROOT_PASSWORD=mypassword
+            - MYSQL_DATABASE=wildrydes
+        ports:
+            - "3306:3306"
+    wildrydes:
+        build: .
+        image: "wildrydes:latest"
+        container_name: wildrydes
+        depends_on: 
+            - mysql
+        ports: 
+            - "80:80"
+        environment: 
+            - INVOKE_URL=http://0.0.0.0:80
+            - MYSQL_ROOT_PASSWORD=mypassword
+            - MYSQL_DATABASE=wildrydes
