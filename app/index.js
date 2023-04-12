@@ -1,4 +1,5 @@
 import lumigo from "@lumigo/opentelemetry";
+import { trace } from '@opentelemetry/api';
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import cookieParser from "cookie-parser";
@@ -9,7 +10,6 @@ import { nanoid } from 'nanoid'
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
-
 
 // Constants
 const PORT = 80;
@@ -24,23 +24,27 @@ async function putItem(item) {
 
   const params = {
     TableName: TABLE_NAME,
-    Item: item
+    Item: item, 
+    ConditionExpression: 'attribute_not_exists(idunicorns)',
   };
 
   const command = new PutItemCommand(params);
 
  try {
     const { $metadata } = await DDBclient.send(command);
-    const statusCode = $metadata.httpStatusCode;
-    if (statusCode === 200) {
+
+    if ($metadata.httpStatusCode === 200) {
+      //exec in here
       console.log("Item added to table. ", $metadata);
     } else {
+      //exec in here
       console.error(`Unexpected status code: ${statusCode}`);
     }
-    return statusCode;
+    return $metadata.httpStatusCode;
   } catch (err) {
-    console.error("Error adding item to table:", err);
-    throw err;
+    console.error("Error adding item to table:");
+    // throw err;
+    return 400;
   }
 }
 
@@ -82,7 +86,7 @@ app.get('/', (req, res) => {
   res.sendFile('public/index.html', { root: __dirname });
 });
 
-app.post('/register', async function(req, res) {
+app.post('/register', async (req, res) => {
   const uuid = nanoid();
   req.body.password = bcrypt.hashSync(req.body.password , 10);
 
@@ -93,11 +97,21 @@ app.post('/register', async function(req, res) {
   };
 
   try {
-    const statusCode = await putItem(item);
-    console.log(`Item added to table with status code: ${statusCode}`);
-    res.redirect('/sign-in');
+
+    const statusCode = await putItem(item);   
+
+    if (statusCode === 200) {
+      res.status(200).json({ message: "Correct credentials" });
+    } else {
+      console.log(statusCode);
+      res.status(500).json({ error: 'Registration Error' });
+    }
+  
   } catch (err) {
-    console.error("Error adding item to table:", err);
+    trace.getActiveSpan()?.setAttribute('lumigo.execution_tags.database','err_adding');
+    console.error("Error adding item:", err);
+
+    res.status(500).json({ error: 'Registration Error' });
   }
 });
 
@@ -134,10 +148,12 @@ app.post('/sign-in', async (req, res) => {
         res.cookie('auth_token', token, { expires: new Date(Date.now() + 4 * 3600000) }); // expires 4 hours
         res.status(200).json({ message: "Correct credentials" });
       } else {
-        res.status(200).json({ error: 'Wrong credentials' });
+        trace.getActiveSpan()?.setAttribute('lumigo.execution_tags.auth','err_password');
+        res.status(500).json({ error: 'Incorrect Password' });
       }
     } else {
-      res.status(200).json({ error: 'Wrong credentials' });
+      trace.getActiveSpan()?.setAttribute('lumigo.execution_tags.auth','err_username');
+      res.status(500).json({ error: 'Wrong credentials' });
     }
   } catch (err) {
     console.error("Error fetching item from table:", err);
@@ -163,7 +179,6 @@ app.get('/ride', (req, res) => {
     // Token verification failed
     else {
       console.log("ride: token verified");
-      //process.env.INVOKE_URL
       res.sendFile('public/ride.html', { root: __dirname });
     }
   }
@@ -200,6 +215,9 @@ app.get('/logout', (req, res) => {
   res.sendFile('public/signin.html', { root: __dirname });
 });
 
+app.get('*', (req, res) => {
+  res.sendFile('public/404.html', { root: __dirname });
+});
 
 app.listen(PORT, HOST);
 console.log(`Running on http://${HOST}:${PORT}`);

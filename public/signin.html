@@ -40,7 +40,6 @@
         <script>     
 
             // Attach a submit handler to the form 
-          // Attach a submit handler to the form 
         
             console.log("Inside script");
             $(document).ready(function () {
@@ -61,6 +60,10 @@
                             else {
                                 location.href = window.location.origin + "/ride";
                             }
+                        },
+                        error: function(xhr, status, error) {
+                            alert(xhr.responseJSON.error);
+                            console.log(xhr);
                         }
                     });
                 });

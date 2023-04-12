@@ -28,7 +28,7 @@
 
         <section class="form-wrap">
             <h1>Register</h1>
-            <form id="registrationForm" action="/register" method="POST" enctype="application/x-www-form-urlencoded">
+            <form id="registrationForm" action="" method="POST" enctype="application/x-www-form-urlencoded">
               <input type="text" id="usernameInputRegister" name="username" placeholder="Username" pattern=".*" required>
               <input type="password" id="passwordInputRegister" name="password" placeholder="Password" pattern=".*" required>
               <input type="submit" value="Let's Ryde">
@@ -37,5 +37,39 @@
 
         <script src="js/vendor/jquery-3.1.0.js"></script>
         <script src="js/vendor/bootstrap.min.js"></script>
+        <script>     
+
+            // Attach a submit handler to the form 
+        
+            console.log("Inside script");
+            $(document).ready(function () {
+                $("#registrationForm").submit(function(event) {
+                    console.log("Before formdata");
+                    var formData = $(this).serialize();
+                    console.log(formData);
+                    event.stopPropagation();
+                    event.preventDefault();
+                    $.ajax({
+                        url: "/register",
+                        data: formData,
+                        processData: false,
+                        method: "POST",
+                        success: function(data, status, xhr) {
+                            if (data.error) {
+                                alert(data.error);
+                                console.log(data);
+                            }
+                            else {
+                                location.href = window.location.origin + "/sign-in";
+                            }
+                        },
+                        error: function(xhr, status, error) {
+                            alert(xhr.responseJSON.error);
+                            console.log(xhr);
+                        }
+                    });
+                });
+            });
+        </script>
     </body>
 </html>
