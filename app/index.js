@@ -3,7 +3,7 @@ import { trace } from '@opentelemetry/api';
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import cookieParser from "cookie-parser";
-import {PutCommand, GetCommand, UpdateCommand, ScanCommand, QueryCommand} from "@aws-sdk/lib-dynamodb";
+import {PutCommand,GetCommand, UpdateCommand, ScanCommand, QueryCommand} from "@aws-sdk/lib-dynamodb";
 import {DynamoDBClient, PutItemCommand, GetItemCommand} from '@aws-sdk/client-dynamodb';
 import express from "express";
 import { nanoid } from 'nanoid'
@@ -19,6 +19,7 @@ const TABLE_NAME = "wildrydes";
 const DDBclient = new DynamoDBClient({});
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.join(path.dirname(__filename), '../');
+var unicorn
 
 async function putItem(item) {
 

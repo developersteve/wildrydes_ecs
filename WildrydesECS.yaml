@@ -1,0 +1,211 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: CloudFormation template for Lumigo ECS Workshop
+Parameters:
+  LumigoToken:
+    Type: String
+    Description: LUMIGO_TRACER_TOKEN
+    NoEcho: true
+Resources:
+  DynamoDBTable:
+      Type: "AWS::DynamoDB::Table"
+      Properties:
+          AttributeDefinitions: 
+            - 
+              AttributeName: "idunicorns"
+              AttributeType: "S"
+          TableName: 
+            Fn::Sub: "wildrydes"
+          KeySchema: 
+            - 
+              AttributeName: "idunicorns"
+              KeyType: "HASH"
+          ProvisionedThroughput: 
+              ReadCapacityUnits: 1
+              WriteCapacityUnits: 1
+  DynamoDBReadWriteUser:
+    Type: AWS::IAM::User
+  DynamoDBReadWritePolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: DynamoDBReadWriteAccess
+      Users:
+        - !Ref DynamoDBReadWriteUser
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - dynamodb:GetItem
+              - dynamodb:Query
+              - dynamodb:Scan
+              - dynamodb:PutItem
+              - dynamodb:UpdateItem
+            Resource: !GetAtt DynamoDBTable.Arn
+  DynamoDBAccessKey:
+    Type: AWS::IAM::AccessKey
+    Properties:
+      UserName: !Ref DynamoDBReadWriteUser
+  UniVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: UniIGW
+  AttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref UniVPC
+      InternetGatewayId: !Ref InternetGateway
+  PublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref UniVPC
+      CidrBlock: 10.0.1.0/24
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: PublicSubnet
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref UniVPC
+      Tags:
+        - Key: Name
+          Value: PublicRouteTable
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: AttachGateway
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+  PublicSubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet
+      RouteTableId: !Ref PublicRouteTable
+  ContainerInstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role
+  ContainerInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref ContainerInstanceRole
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: UniECSCluster
+      ClusterSettings:
+        - Name: containerInsights
+          Value: enabled
+  UniLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: UniLogGroup
+      RetentionInDays: 3
+  ECSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Enable access to ECS instances
+      VpcId: !Ref UniVPC
+      Tags:
+        - Key: Name
+          Value: ECSSecurityGroup
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+  TaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ecs-tasks.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+  UniTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: UniTaskFamily
+      ExecutionRoleArn: !GetAtt TaskExecutionRole.Arn
+      TaskRoleArn: !Ref TaskExecutionRole
+      NetworkMode: awsvpc
+      Memory: 1024
+      Cpu: 512
+      RequiresCompatibilities:
+        - FARGATE
+      ContainerDefinitions:
+        - Name: UniContainer
+          Image: !Sub "public.ecr.aws/c2g3s4m3/wildrydes_ecs"
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: UniLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: UniContainer
+          Environment: 
+            - 
+              Name: "OTEL_SERVICE_NAME"
+              Value: !Sub "ECS_WildRydes"
+            - 
+              Name: "AWS_REGION"
+              Value: !Ref AWS::Region
+            - 
+              Name: "LUMIGO_TRACER_TOKEN"
+              Value: !Ref LumigoToken
+            - 
+              Name: "AWS_ACCESS_KEY_ID"
+              Value: !Ref DynamoDBAccessKey
+            - 
+              Name: "AWS_SECRET_ACCESS_KEY"
+              Value: !GetAtt DynamoDBAccessKey.SecretAccessKey
+          Essential: true
+          PortMappings:
+            - ContainerPort: 80
+              HostPort: 80
+              Protocol: tcp
+  UniECSService:
+    Type: AWS::ECS::Service
+    Properties:
+      Cluster: !Ref ECSCluster
+      DesiredCount: 1
+      LaunchType: FARGATE
+      TaskDefinition: !Ref UniTaskDefinition
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 50
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          Subnets:
+            - !Ref PublicSubnet
+          SecurityGroups:
+            - !Ref ECSSecurityGroup
+
+
