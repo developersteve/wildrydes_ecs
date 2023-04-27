@@ -92,9 +92,10 @@ app.post('/register', async (req, res) => {
 
   if(req.body.username === "timeout" ){
 
-   // Set the timeout to 60 seconds
-    const timeout = 60 * 1000;
     trace.getActiveSpan()?.setAttribute('lumigo.execution_tags.database','timeout');
+
+    // Set the timeout to 60 seconds
+    const timeout = 60 * 1000;
     setTimeout(() => {
       res.send('Response after ' + timeout + 'ms');
     }, timeout + 5000); 
