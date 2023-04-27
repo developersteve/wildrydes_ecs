@@ -92,6 +92,13 @@ app.post('/register', async (req, res) => {
 
   if(req.body.username === "timeout" ){
 
+   // Set the timeout to 60 seconds
+    const timeout = 60 * 1000;
+    trace.getActiveSpan()?.setAttribute('lumigo.execution_tags.database','timeout');
+    setTimeout(() => {
+      res.send('Response after ' + timeout + 'ms');
+    }, timeout + 5000); 
+
   } else if (req.body.username === "http") {    
 
     //send back an instant http status code response from the password if username is http
