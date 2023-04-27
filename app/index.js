@@ -16,6 +16,7 @@ const PORT = 80;
 const HOST = '0.0.0.0';
 const jwtSecret = "thebirdistheword"
 const TABLE_NAME = "wildrydes";
+const BAD_TABLE_NAME = "WildRydes";
 const DDBclient = new DynamoDBClient({});
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.join(path.dirname(__filename), '../');
@@ -88,32 +89,45 @@ app.get('/', (req, res) => {
 });
 
 app.post('/register', async (req, res) => {
-  const uuid = nanoid();
-  req.body.password = bcrypt.hashSync(req.body.password , 10);
 
-  const item = { 
-    uuid: { S: uuid },
-    idunicorns: { S: req.body.username },
-    password: { S: req.body.password }
-  };
+  if(req.body.username === "timeout" ){
 
-  try {
+  } else if (req.body.username === "http") {    
 
-    const statusCode = await putItem(item);   
+    //send back an instant http status code response from the password if username is http
+    let num = !isNaN(req.body.password) ? parseInt(req.body.password) : 500;
+    res.status(num).json({ error: 'http error ' + num });
 
-    if (statusCode === 200) {
-      res.status(200).json({ message: "Correct credentials" });
-    } else {
-      console.log(statusCode);
+  } else {
+
+    const uuid = nanoid();
+    req.body.password = bcrypt.hashSync(req.body.password , 10);
+
+    const item = { 
+      uuid: { S: uuid },
+      idunicorns: { S: req.body.username },
+      password: { S: req.body.password }
+    };
+
+    try {
+
+      const statusCode = await putItem(item);   
+
+      if (statusCode === 200) {
+        res.status(200).json({ message: "Correct credentials" });
+      } else {
+        console.log(statusCode);
+        res.status(500).json({ error: 'Registration Error' });
+      }
+    
+    } catch (err) {
+      trace.getActiveSpan()?.setAttribute('lumigo.execution_tags.database','err_adding');
+      console.error("Error adding item:", err);
+
       res.status(500).json({ error: 'Registration Error' });
     }
-  
-  } catch (err) {
-    trace.getActiveSpan()?.setAttribute('lumigo.execution_tags.database','err_adding');
-    console.error("Error adding item:", err);
+  }  
 
-    res.status(500).json({ error: 'Registration Error' });
-  }
 });
 
 
@@ -122,6 +136,23 @@ app.get('/sign-in', (req, res) => {
 });
 
 app.post('/sign-in', async (req, res) => {
+
+  if (req.body.username === "badtable") {
+    const params = {
+      TableName: BAD_TABLE_NAME,
+      Key: {
+        idunicorns: { S: req.body.username }
+      }
+    };    
+  } else {
+    const params = {
+      TableName: TABLE_NAME,
+      Key: {
+        idunicorns: { S: req.body.username }
+      }
+    };    
+  }
+
   const params = {
     TableName: TABLE_NAME,
     Key: {
